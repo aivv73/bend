@@ -2640,9 +2640,10 @@ export function match_flatten(m: Match, vars: PVar[], fr: () => number): LTerm {
     }
     switch (e.$) {
       case "Var": {
-        throw Err(book_nil(), ctx_nil(), "a match on a parameter or field (this"
-          + " name is a def or a consumed binder: give the value its own def)",
-          undefined, e.s);
+        const x = e.s === undefined ? e.k : e.s.file.str.slice(e.s.beg, e.s.end);
+        throw Err(book_nil(), ctx_nil(), "'" + x + "' can't be matched in this position"
+          + " (it is matched after a local statement or after a match on a later binder,"
+          + " it was already matched, or it is a def)", undefined, e.s);
       }
       case "Ctr":
       case "Lit": {
