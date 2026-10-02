@@ -999,7 +999,9 @@ function type_adts(fl: File, T: HTerm): Name[] {
 // that re-enters it under layout (a family hid the cycle) are one box.
 // An Array cell takes the open layout of its element type (the return
 // type of its constructors), so all callers agree. lay_el refuses an
-// open element type; adt_of and js_expr call it only for that check.
+// open element type, except equality: its sides may mention type variables,
+// since its layout does not depend on them. adt_of and js_expr call it
+// only for that check.
 
 function lay_of(book: Bend.Book, A: HTerm | null): Lay {
   const t = ty_adt(book, A);
@@ -1025,7 +1027,13 @@ function lay_of(book: Bend.Book, A: HTerm | null): Lay {
 }
 
 function lay_el(book: Bend.Book, A: HTerm | null): Lay {
-  const t = ty_adt(book, A) ?? die("an open Array element type");
+  const t = ty_wnf(book, A);
+  if (t?.$ === "Eql") {
+    return lay_of(book, A);
+  }
+  if (t?.$ !== "ADT") {
+    die("an open Array element type");
+  }
   const tld = book.tlds[t.k];
   return lay_of(book, tld?.$ === "ADT" && tld.c[0]
     ? tele_unbind(book, tld.c[0].T).ret : A);
