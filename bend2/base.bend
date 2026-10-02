@@ -75,6 +75,9 @@ type Image is Data:
   Pix{color: U32}
   Qua{tl: Image, tr: Image, bl: Image, br: Image}
 
+type Capture is Type:
+  Capture{width: U32, height: U32, pixels: Array<U32>}
+
 type Event is Data:
   Key{code: U32, down: Bool}
   Mouse{x: U32, y: U32, button: U32, down: Bool}
@@ -374,6 +377,14 @@ def Window.open(title: String, width: U32, height: U32) ->
   IO(Result<&1, &1, U32 & String, Window>):
   import "./effs/window.c"
   import "./effs/window_open.js"
+
+# Read the fully on-screen, unobscured client through the window system.
+# Returns the owner on failure too. RGB is 0x00RRGGBB, top-left row-major.
+# Width times height is the logical length; power-of-two Array padding is zero.
+def Window.capture(window: Window) ->
+  IO(Window & Result<&1, &1, U32 & String, Capture>):
+  import "./effs/window.c"
+  import "./effs/window_capture.js"
 
 def Window.frame(window: Window, image: Image) ->
   IO(Window & Image & List<Event>):
