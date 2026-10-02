@@ -695,7 +695,8 @@ function swi(e: Safe, s: Scope, t: HTerm, T: HTerm | null, fs: Chain[], cv: numb
       }
       const [hT, mT] = goals(e, all, ctr);
       const h = tree(e, s, typed(x.h, hT), [...fs, { n: ctr.n, cv }]);
-      const m = swi(e, s, x.m, mT, fs, cv);
+      const dead = mT?.$ === "All" && no_ctr(e, mT.A) && x.m.$ !== "Mat";
+      const m = swi(e, s, dead ? B.Efq() : x.m, mT, fs, cv);
       return { $: "Mat", k: name_tt(x.k), h, m };
     }
     default: {
@@ -1252,22 +1253,14 @@ function rwt_term(e: Safe, s: Scope, x: Extract<HTerm, { $: "Rwt" }>, live: bool
 
 // whether o calls def k with the variable at level l as an argument
 function self_arg(o: O, k: string, l: number): boolean {
-  if (o.$ === "App") {
-    let h: O = o;
-    while (h.$ === "App") {
-      if (h.x.$ === "Var" && h.x.l === l && h.q > 0) {
-        let r: O = h;
-        while (r.$ === "App") {
-          r = r.f;
-        }
-        if (r.$ === "Ref" && r.k === k) {
-          return true;
-        }
-      }
-      h = h.f;
-    }
+  let h: O = o;
+  let found = false;
+  while (h.$ === "App") {
+    found ||= h.x.$ === "Var" && h.x.l === l && h.q > 0;
+    h = h.f;
   }
-  return Object.values(o).some((v) => is_o(v) && self_arg(v, k, l));
+  return (found && h.$ === "Ref" && h.k === k)
+    || Object.values(o).some((v) => is_o(v) && self_arg(v, k, l));
 }
 
 // the def names o mentions

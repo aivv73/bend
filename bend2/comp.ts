@@ -3425,9 +3425,11 @@ using namespace metal;
 // Metal needs coherent(device) (MSL 3.2), or M1-class parts lose stores
 // across the threadgroups of a dispatch. CUDA keeps plain data cacheable
 // in L1: lanes hand off through a32 and FENCE. Only clang 19+ has both
-// preserve_none and preserve_most, and compiles preserve_most soundly. A
-// segment is a case of the device's switch; on the host, a preserve_none
-// function (WL_SIG) entered by musttail, its words fresh at WL_OPEN.
+// preserve_none and preserve_most, and compiles preserve_most soundly; at
+// -O0 its register allocator cannot place a preserve_none segment, so an
+// unoptimized build takes neither. A segment is a case of the device's
+// switch; on the host, a preserve_none function (WL_SIG) entered by
+// musttail, its words fresh at WL_OPEN.
 
 #ifdef __METAL_VERSION__
 #if __METAL_VERSION__ >= 320
@@ -3461,7 +3463,8 @@ using namespace metal;
 #define BARD()  \
   { __threadfence(); __syncthreads(); }
 #else
-#if __has_attribute(preserve_none) && __has_attribute(preserve_most)
+#if __has_attribute(preserve_none) && __has_attribute(preserve_most) \
+  && defined(__OPTIMIZE__)
 #define PRESERVE(A) __attribute__((A))
 #else
 #define PRESERVE(A)
