@@ -68,7 +68,7 @@ type File = {
   tails: Map<Name, Set<Name>>;
   img: string[];
   lits: Map<string, number>;
-  consts: Map<string, Map<HTerm, Val>>;
+  consts: Map<Lay, Map<HTerm, Val>>;
   fresh: Map<string, number>;
   brwl: Map<string, string>;
   seg: Seg;
@@ -582,6 +582,8 @@ const SPINES = new Map<HTerm, Spine>();
 const NODES = new Map<Name, Lay>();
 
 const LAYS = new Map<string, Lay>();
+
+const LAY_IDS = new Map<Lay, number>();
 
 const CONSTS = new Map<HTerm, boolean>();
 
@@ -1389,7 +1391,8 @@ function file_book(book: Bend.Book, roots: Name[], js: boolean): File {
         + " names both a constructor and a foreign def: name one apart");
     }
   }
-  [TELES, SRCS, LOOPS, NODES, LAYS, FLATS, FUNS, BRWS, IDS, TAKEN]
+  [TELES, SRCS, LOOPS, NODES, LAYS, LAY_IDS, FLATS, FUNS, BRWS, IDS,
+    TAKEN]
     .forEach((m) => m.clear());
   "FID_EXIT FID_ENTER FID_T CID_T".split(" ").forEach((id) => TAKEN.add(id));
   PROBES.length = 1;
@@ -2270,8 +2273,8 @@ function emit_open(fl: File, k: Name): [File, Val[]] {
 }
 
 function emit_native(fl: File, k: Name, ers: HTerm[]): string {
-  const key = [k, ...ers.map((e) => JSON.stringify(lay_of(fl.book, e)))]
-    .join("|");
+  const key = [k, ...ers.map((e) => memo(LAY_IDS, lay_of(fl.book, e),
+    () => LAY_IDS.size))].join("|");
   const got = fl.spun.get(key);
   if (got !== undefined) {
     return seg_ref(fl, got);
@@ -2378,7 +2381,7 @@ function emit_ctr(fl: File, x: Of<"Ctr">, ty: HTerm | null,
     facts_ctr(fl, fl.book.ctrs[x.k], adt.x);
   }
   const pos = at ?? lay_of(fl.book, adt);
-  const seen = memo(fl.consts, JSON.stringify(pos), () => new Map());
+  const seen = memo(fl.consts, pos, () => new Map());
   const got = seen.get(x);
   if (got !== undefined) {
     return got;
