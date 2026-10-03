@@ -131,11 +131,21 @@ type Safe = {
   grew: boolean;
 };
 
+// a model search's fuel left, its round's depth, and whether that round
+// cut a branch at the depth or the fuel
+type Probe = { left: number; depth: number; cut: boolean };
+
 // Constants
 // =========
 
 // a Nat literal longer than this goes out as arithmetic on shorter ones
 const NAT_MAX = 4096;
+
+// a model search's work: a step per type it visits and per character of
+// the datatype keys it builds, in rounds of doubling depth from
+// MODEL_DEPTH
+const MODEL_FUEL = 1 << 22;
+const MODEL_DEPTH = 8;
 
 // Errors
 // ======
@@ -482,10 +492,36 @@ function type_drop(e: Safe, T: HTerm, cols: Cols): HTerm {
 // as the kernel checks a model with every opaque def at its own
 
 function model(e: Safe, T: HTerm): HTerm | null {
-  return model_at(e, T, 0, [], [], false) ?? model_at(e, T, 0, [], [], true);
+  return model_by(e, T, false) ?? model_by(e, T, true);
 }
 
-function model_at(e: Safe, T: HTerm, d: number, path: string[], hs: Array<[HTerm, HTerm]>, proj: boolean): HTerm | null {
+// a round that cuts no branch finds what an unbounded search would; one
+// that does is retried deeper while fuel lasts, and the first model a
+// cut round found stands only when none is left (the kernel checks it)
+function model_by(e: Safe, T: HTerm, proj: boolean): HTerm | null {
+  const probe: Probe = { left: MODEL_FUEL, depth: MODEL_DEPTH, cut: true };
+  let m: HTerm | null = null;
+  for (; probe.cut && probe.left > 0; probe.depth *= 2) {
+    probe.cut = false;
+    const v = model_at(e, T, 0, [], [], proj, probe);
+    m = probe.cut ? m ?? v : v;
+  }
+  return m;
+}
+
+// a datatype's key on the path: binders inside it count from d, so a
+// field under a ∀ meets the same datatype again
+function model_key(F: HTerm, d: number): string {
+  const at = (i: unknown): unknown => typeof i === "number" && i >= d ? "^" + (i - d) : i;
+  return JSON.stringify(B.term_lower(F, d), (k, v) => k === "s" ? undefined : k !== "i" ? v : Array.isArray(v) ? v.map(at) : at(v));
+}
+
+function model_at(e: Safe, T: HTerm, d: number, path: string[], hs: Array<[HTerm, HTerm]>, proj: boolean, probe: Probe): HTerm | null {
+  if (path.length + d > probe.depth || probe.left <= 0) {
+    probe.cut = true;
+    return null;
+  }
+  probe.left -= 1;
   const F = B.term_wnf(e.mb, T);
   const hyp = (): HTerm | null => hs.find(([, A]) => B.term_compare("EQ", e.mb, A, F, d))?.[0] ?? null;
   switch (F.$) {
@@ -493,18 +529,22 @@ function model_at(e: Safe, T: HTerm, d: number, path: string[], hs: Array<[HTerm
       return B.ADT("Unit", []);
     }
     case "All": {
-      const f = (x: HTerm): HTerm | null => model_at(e, F.B(x), d + 1, path, F.q.$ === "None" ? hs : [...hs, [x, F.A]], proj);
-      return f(B.Var(F.k, d)) === null ? null : B.Ann(B.Lam(F.k, d, (x: HTerm) => f(x) as HTerm), F);
+      // the body is searched once, then each use binds level d in it
+      const x: HTerm = B.Var(F.k, d);
+      const t = model_at(e, F.B(x), d + 1, path, F.q.$ === "None" ? hs : [...hs, [x, F.A]], proj, probe);
+      return t === null ? null : B.Ann(B.Lam(F.k, d, (v: HTerm) =>
+        subst(t, d + 1, (o) => o.$ !== "Var" || (o.i as number) > d ? undefined : o.i === d ? v : B.Var(o.k as Name, o.i as number))), F);
     }
     case "ADT": {
-      const key = B.term_key(B.term_lower(F, d));
+      const key = model_key(F, d);
+      probe.left -= key.length;
       const tld = e.mb.tlds[F.k] as ADT;
       const h = proj ? hyp() : null;
       for (const c of path.includes(key) || h !== null ? [] : tld.c.filter((c) => !F.r.includes(c.k))) {
         const xs: HTerm[] = [];
         let U = B.term_wnf(e.mb, B.tele_fill(e.mb, c.T, F.x, B.ctx_nil()));
         let x: HTerm | null = null;
-        while (U.$ === "All" && (x = model_at(e, U.A, d, [...path, key], [], proj)) !== null) {
+        while (U.$ === "All" && (x = model_at(e, U.A, d, [...path, key], [], proj, probe)) !== null) {
           xs.push(x);
           U = B.term_wnf(e.mb, U.B(x));
         }
